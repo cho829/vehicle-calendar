@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>車両予約カレンダー</title>
+  <style>
+    .small-button {
+        font-size: 3%;
+        padding: 2px 4px;
+    }
+
+    body { font-family: sans-serif; padding: 20px; }
+    form { margin-bottom: 20px; }
+    label { display: inline-block; width: 100px; margin-right: 5px; }
+    input, select { margin-bottom: 10px; }
+
+    .calendar-container {
+      overflow-x: auto;
+      max-width: 100%;
+    }
+
+    table { border-collapse: collapse; table-layout: fixed; min-width: 50%; }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 3px;
+      text-align: center;
+      font-size: 5px;
+      vertical-align: top;
+      overflow: hidden; 
+      word-wrap: break-word;
+      height: 10px;
+      td {
+        width: 14%; /* 各セルの幅を均等に設定 (7日分のカレンダー列を考慮) */
+      }
+    }
+    .reserved {
+      background-color: #f39c12;
+      color: white;
+      border-radius: 4px;
+      margin: 2px 0;
+      padding: 2px;
+      display: block;
+      font-size: 5px;
+      position: relative;
+      max-width: 100%;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      white-space: normal;
+    }
+    .reserved button {
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 3px;
+      margin-left: 4px;
+    }
+
+    .vehicle-col {
+      text-align: left;
+      white-space: nowrap;
+      padding-left: 8px;
+    }
+    .rotated {
+      writing-mode: vertical-rl;
+      white-space: nowrap;
+      font-size: 10px;
+    }
+    .weekend { background-color: #eef; }
+    .month-controls {
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>🚗 車両を追加</h2>
+  <form id="vehicle-form">
+    <input type="hidden" id="vehicle-edit-index" value="">
+    <label>車両名:</label>
+    <input type="text" id="vehicle-name" required><br />
+    <label>ナンバー:</label>
+    <input type="text" id="vehicle-plate" required><br />
+    <button type="submit">車両を追加</button>
+  </form>
+
+  <h2>📅 予約を追加 / 編集</h2>
+  <form id="reservation-form">
+    <input type="hidden" id="edit-index" value="">
+    <label>車両:</label>
+    <select id="vehicle-select"></select><br />
+    <label>予約者名:</label>
+    <input type="text" id="reserver-name" required /><br />
+    <label>開始日:</label>
+    <input type="date" id="start-date" required><br />
+    <label>終了日:</label>
+    <input type="date" id="end-date" required><br />
+    <label>貸出時間:</label>
+    <input type="time" id="start-time" required><br />
+    <label>返却時間:</label>
+    <input type="time" id="end-time" required><br />
+    <button type="submit">予約を追加 / 更新</button>
+  </form>
+
+  <h2>📊 車両予約カレンダー</h2>
+  <div class="month-controls">
+    <button onclick="changeMonth(-1)">← 前月</button>
+    <span id="month-label"></span>
+    <button onclick="changeMonth(1)">翌月 →</button>
+  </div>
+
+  <div class="calendar-container">
+    <table>
+      <thead>
+        <tr>
+          <th>車両名 / 車番</th>
+        </tr>
+        <tr id="calendar-header">
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="calendar-body"></tbody>
+    </table>
+  </div>
+
+  <script>
+    window.editVehicle = function(index) {
+        const v = vehicles[index];
+        document.getElementById("vehicle-name").value = v.name;
+        document.getElementById("vehicle-plate").value = v.plate;
+        document.getElementById("vehicle-edit-index").value = index;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    const vehicles = [
+      { name: "ミニバン・ラフェスタ", plate: "沖縄528わ6514" },
+      { name: "ミニバン・ビアンテ", plate: "沖縄328わ766" },
+      { name: "ミニバン・セレナ", plate: "沖縄527わ6833" }
+    ];
+
+    
+　　const reservations = JSON.parse(localStorage.getItem("reservations") || "[]");
+　　function saveReservations() {
+    localStorage.setItem("reservations", JSON.stringify(reservations));
+　　}
+    const vehicleSelect = document.getElementById("vehicle-select");
+    const calendarBody = document.getElementById("calendar-body");
+    const calendarHeader = document.getElementById("calendar-header");
+    const monthLabel = document.getElementById("month-label");
+
+    let currentYear = 2025;
+    let currentMonth = 3;
+
+    function updateVehicleSelect() {
+      vehicleSelect.innerHTML = "";
+      vehicles.forEach(vehicle => {
+        const opt = document.createElement("option");
+        opt.value = vehicle.plate;
+        opt.textContent = `${vehicle.name} / ${vehicle.plate}`;
+        vehicleSelect.appendChild(opt);
+      });
+    }
+
+    function getDateArray(year, month) {
+      const start = new Date(year, month, 1);
+      const end = new Date(year, month + 1, 0);
+      const days = [];
+      let d = new Date(start);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        days.push(new Date(d.getTime()));
+      }
+      return days;
+    }
+
+    function renderCalendarHeader(dates) {
+  calendarHeader.innerHTML = "";
+
+  const blankTh = document.createElement("th");
+  calendarHeader.appendChild(blankTh);
+
+  const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
+  dates.forEach(d => {
+    const th = document.createElement("th");
+    // className = "rotated"; ← 縦書きをやめる
+    if (d.getDay() === 0 || d.getDay() === 6) th.classList.add("weekend");
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const weekday = dayNames[d.getDay()];
+    th.innerHTML = `${m}/${day} (${weekday})`;  // 横向きで1行に表示
+    calendarHeader.appendChild(th);
+  });
+}
+
+function renderCalendar() {
+  const dateArray = getDateArray(currentYear, currentMonth);
+  renderCalendarHeader(dateArray);
+  calendarBody.innerHTML = "";
+
+  vehicles.forEach(vehicle => {
+    const rows = [];
+
+    reservations
+      .filter(res => res.plate === vehicle.plate)
+      .forEach((res, resIndex) => {
+        const resStart = new Date(`${res.start}T${res.startTime}`);
+        const resEnd = new Date(`${res.end}T${res.endTime}`);
+
+        // 予約の対象日範囲を取得
+        let startIndex = -1;
+        let endIndex = -1;
+        dateArray.forEach((d, i) => {
+          const dayStart = new Date(`${d.toISOString().slice(0, 10)}T00:00`);
+          const dayEnd = new Date(`${d.toISOString().slice(0, 10)}T23:59`);
+          if (startIndex === -1 && resStart <= dayEnd && resEnd >= dayStart) {
+            startIndex = i;
+          }
+          if (resStart <= dayEnd && resEnd >= dayStart) {
+            endIndex = i;
+          }
+        });
+
+        if (startIndex === -1 || endIndex === -1) return;
+
+        const span = endIndex - startIndex + 1;
+
+        // 空いている行を探す（row[i] 全部が空いてる行）
+        let targetRow = null;
+        for (let r = 0; r < rows.length; r++) {
+          const row = rows[r];
+          let conflict = false;
+          for (let i = startIndex; i <= endIndex; i++) {
+            if (row[i]) {
+              conflict = true;
+              break;
+            }
+          }
+          if (!conflict) {
+            targetRow = row;
+            break;
+          }
+        }
+
+        // 空いてる行がなければ新しく作る
+        if (!targetRow) {
+          targetRow = Array(dateArray.length).fill(null);
+          rows.push(targetRow);
+        }
+
+        // セル作成
+        const cell = document.createElement("td");
+        cell.colSpan = span;
+        const div = document.createElement("div");
+        div.className = "reserved";
+        div.innerHTML = `
+          ${res.name}<br>${res.startTime}〜${res.endTime}
+          <br>
+          <button onclick="window.editReservation(${resIndex})" class="small-button">✏️</button>
+          <button onclick="window.deleteReservation(${resIndex})" class="small-button">🗑️</button>
+        `;
+        cell.appendChild(div);
+
+        // 予約範囲にセルを埋める（1つだけ実セル、残りはプレースホルダー）
+        targetRow[startIndex] = cell;
+        for (let i = startIndex + 1; i <= endIndex; i++) {
+          targetRow[i] = "span"; // マークだけしておく（表示には使わない）
+        }
+      });
+
+    // 表示用にtrを組み立てる
+    rows.forEach((rowCells, rowIndex) => {
+      const tr = document.createElement("tr");
+
+      if (rowIndex === 0) {
+        const labelCell = document.createElement("td");
+        labelCell.className = "vehicle-col";
+        labelCell.rowSpan = rows.length;
+        labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
+          <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
+        tr.appendChild(labelCell);
+      }
+
+      for (let i = 0; i < dateArray.length; i++) {
+        const cell = rowCells[i];
+        if (cell && cell !== "span") {
+          tr.appendChild(cell);
+        } else if (!cell) {
+          tr.appendChild(document.createElement("td"));
+        }
+        // span はスキップ（colSpanで結合されてる）
+      }
+
+      calendarBody.appendChild(tr);
+    });
+
+    if (rows.length === 0) {
+      const tr = document.createElement("tr");
+      const labelCell = document.createElement("td");
+      labelCell.className = "vehicle-col";
+      labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
+        <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
+      tr.appendChild(labelCell);
+      for (let i = 0; i < dateArray.length; i++) {
+        tr.appendChild(document.createElement("td"));
+      }
+      calendarBody.appendChild(tr);
+    }
+  });
+
+  monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
+}
+
+
+
+
+
+    function changeMonth(offset) {
+      currentMonth += offset;
+      if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+      } else if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+      }
+      renderCalendar();
+    }
+
+    window.editReservation = function(index) {
+      const r = reservations[index];
+      document.getElementById("edit-index").value = index;
+      vehicleSelect.value = r.plate;
+      document.getElementById("reserver-name").value = r.name;
+      document.getElementById("start-date").value = r.start;
+      document.getElementById("end-date").value = r.end;
+      document.getElementById("start-time").value = r.startTime;
+      document.getElementById("end-time").value = r.endTime;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    window.deleteReservation = function(index) {
+      if (confirm("この予約を削除してもよろしいですか？")) {
+        reservations.splice(index, 1);
+        saveReservations();
+        renderCalendar();
+      }
+    };
+
+    document.getElementById("vehicle-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const name = document.getElementById("vehicle-name").value.trim();
+  const plate = document.getElementById("vehicle-plate").value.trim();
+  const editIndex = document.getElementById("vehicle-edit-index").value;
+
+  if (!name || !plate) return;
+
+  if (editIndex === "") {
+    vehicles.push({ name, plate });
+  } else {
+    vehicles[parseInt(editIndex)] = { name, plate };
+    document.getElementById("vehicle-edit-index").value = "";
+  }
+
+  updateVehicleSelect();
+  renderCalendar();
+  e.target.reset();
+});
+
+
+    document.getElementById("reservation-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const index = document.getElementById("edit-index").value;
+      const plate = vehicleSelect.value;
+      const name = document.getElementById("reserver-name").value;
+      const start = document.getElementById("start-date").value;
+      const end = document.getElementById("end-date").value;
+      const startTime = document.getElementById("start-time").value;
+      const endTime = document.getElementById("end-time").value;
+
+      if (start > end) {
+        alert("開始日は終了日より前にしてください。");
+        return;
+      }
+
+      const newReservation = { plate, name, start, end, startTime, endTime };
+
+
+
+      if (index === "") {
+        reservations.push(newReservation);
+      } else {
+        reservations[parseInt(index)] = newReservation;
+        document.getElementById("edit-index").value = "";
+      }
+      saveReservations();
+      renderCalendar();
+      e.target.reset();
+    });
+
+    updateVehicleSelect();
+    renderCalendar();
+  </script>
+</body>
+</html> 
