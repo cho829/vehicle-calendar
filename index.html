@@ -124,7 +124,11 @@
       const cell = document.createElement("td");
       cell.className = "reserved";
       cell.colSpan = span;
-      cell.innerHTML = `${reservation.name}<br>${reservation.startTime}〜${reservation.endTime}`;
+      cell.innerHTML = `
+  ${reservation.name}<br>${reservation.startTime}〜${reservation.endTime}<br>
+  <button onclick="editReservation('${reservation.id}')">編集</button>
+  <button onclick="deleteReservation('${reservation.id}')">削除</button>
+`;
       row.appendChild(cell);
 
       i += span; // span分スキップ
@@ -171,18 +175,29 @@
 
     // 📅 予約フォーム
     document.getElementById("reservation-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const data = {
-        plate: vehicleSelect.value,
-        name: document.getElementById("reserver-name").value,
-        start: document.getElementById("start-date").value,
-        end: document.getElementById("end-date").value,
-        startTime: document.getElementById("start-time").value,
-        endTime: document.getElementById("end-time").value
-      };
-      await db.collection("reservations").add(data);
-      e.target.reset();
-    });
+  e.preventDefault();
+  const form = e.target;
+  const data = {
+    plate: vehicleSelect.value,
+    name: document.getElementById("reserver-name").value,
+    start: document.getElementById("start-date").value,
+    end: document.getElementById("end-date").value,
+    startTime: document.getElementById("start-time").value,
+    endTime: document.getElementById("end-time").value
+  };
+
+  const editingId = form.dataset.editingId;
+  if (editingId) {
+    // 編集中 → 更新処理
+    await db.collection("reservations").doc(editingId).update(data);
+    delete form.dataset.editingId;
+  } else {
+    // 通常の追加
+    await db.collection("reservations").add(data);
+  }
+
+  form.reset();
+});
 
     // 🔄 Firestore からリアルタイム取得
     db.collection("vehicles").onSnapshot(snapshot => {
@@ -217,6 +232,22 @@ db.collection("reservations").onSnapshot(snapshot => {
   });
   renderCalendar();
 });
+
+    function editReservation(id) {
+  const reservation = reservations.find(r => r.id === id);
+  if (!reservation) return;
+
+  // フォームに値をセット
+  vehicleSelect.value = reservation.plate;
+  document.getElementById("reserver-name").value = reservation.name;
+  document.getElementById("start-date").value = reservation.start;
+  document.getElementById("end-date").value = reservation.end;
+  document.getElementById("start-time").value = reservation.startTime;
+  document.getElementById("end-time").value = reservation.endTime;
+
+  // 更新フラグを設定
+  document.getElementById("reservation-form").dataset.editingId = id;
+}
 
 
     // 初期描画
