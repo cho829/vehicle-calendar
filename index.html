@@ -108,11 +108,16 @@
     const day = dates[i];
 
     // この日から始まる予約があるか探す
-    const reservation = reservations.find(r => {
+          const reservation = reservations.find(r => {
       if (r.plate !== vehicle.plate) return false;
       const start = new Date(`${r.start}T${r.startTime}`);
-      return new Date(start.toDateString()).getTime() === day.getTime();
+      const end = new Date(`${r.end}T${r.endTime}`);
+      const target = new Date(day.toDateString());
+      return target >= new Date(start.toDateString()) && target <= new Date(end.toDateString());
     });
+
+
+
 
     if (reservation) {
       const start = new Date(`${reservation.start}T${reservation.startTime}`);
