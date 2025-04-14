@@ -9,8 +9,13 @@
     table { width: 100%; border-collapse: collapse; font-size: 2px; } /* フォントサイズを小さく */
     th, td { border: 1px solid #aaa; padding: 4px; text-align: center; }
     th { background: #eee; }
-    td.reserved { background: #f39c12; color: white; }
-    td { padding: 8px 5px; } /* 余白を調整 */
+    td.reserved {
+  background: #f39c12;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+  td { padding: 8px 5px; } /* 余白を調整 */
   </style>
 </head>
 <body>
@@ -93,32 +98,45 @@
 
       calendarBody.innerHTML = "";
       vehicles.forEach(vehicle => {
-        const row = document.createElement("tr");
-        const td = document.createElement("td");
-        td.textContent = `${vehicle.name} / ${vehicle.plate}`;
-        row.appendChild(td);
+  const row = document.createElement("tr");
+  const td = document.createElement("td");
+  td.textContent = `${vehicle.name} / ${vehicle.plate}`;
+  row.appendChild(td);
 
-        dates.forEach(day => {
-          const cell = document.createElement("td");
-          const dayReservations = reservations.filter(r => {
-            if (r.plate !== vehicle.plate) return false;
-            const start = new Date(`${r.start}T${r.startTime}`);
-            const end = new Date(`${r.end}T${r.endTime}`);
-            return day >= new Date(start.toDateString()) && day <= new Date(end.toDateString());
-          });
+  let i = 0;
+  while (i < dates.length) {
+    const day = dates[i];
 
-          if (dayReservations.length > 0) {
-            cell.className = "reserved";
-            // 予約内容を1つにまとめる
-            const reservationText = dayReservations.map(r => `${r.name}: ${r.startTime}〜${r.endTime}`).join('<br>');
-            cell.innerHTML = reservationText;
-          }
+    // この日から始まる予約があるか探す
+    const reservation = reservations.find(r => {
+      if (r.plate !== vehicle.plate) return false;
+      const start = new Date(`${r.start}T${r.startTime}`);
+      return new Date(start.toDateString()).getTime() === day.getTime();
+    });
 
-          row.appendChild(cell);
-        });
+    if (reservation) {
+      const start = new Date(`${reservation.start}T${reservation.startTime}`);
+      const end = new Date(`${reservation.end}T${reservation.endTime}`);
 
-        calendarBody.appendChild(row);
-      });
+      // 期間中の何日分か数える
+      const span = dates.filter(d => d >= new Date(start.toDateString()) && d <= new Date(end.toDateString())).length;
+
+      const cell = document.createElement("td");
+      cell.className = "reserved";
+      cell.colSpan = span;
+      cell.innerHTML = `${reservation.name}<br>${reservation.startTime}〜${reservation.endTime}`;
+      row.appendChild(cell);
+
+      i += span; // span分スキップ
+    } else {
+      const empty = document.createElement("td");
+      row.appendChild(empty);
+      i++;
+    }
+  }
+
+  calendarBody.appendChild(row);
+});
 
       monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
     }
