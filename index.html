@@ -9,12 +9,27 @@
     table { width: 100%; border-collapse: collapse; font-size: 2px; } /* フォントサイズを小さく */
     th, td { border: 1px solid #aaa; padding: 4px; text-align: center; }
     th { background: #eee; }
-    td.reserved {
+   td.reserved {
   background: #f39c12;
   color: white;
-  font-size: 12px;
-  font-weight: bold;
+  font-size: 3px; /* ← 12px から小さめに */
+  font-weight: normal;
+  padding: 5px;
 }
+td.reserved button {
+  font-size: 3px;       /* 小さく */
+  padding: 1px 2px;      /* パディング少なめ */
+  margin: 1px;           /* 余白少し */
+  border: none;
+  border-radius: 3px;
+  background: #333;
+  color: #fff;
+  cursor: pointer;
+}
+td.reserved button:hover {
+  background: #555;
+}
+
   td { padding: 8px 5px; } /* 余白を調整 */
   </style>
 </head>
