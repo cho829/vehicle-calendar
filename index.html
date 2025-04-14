@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>車両予約カレンダー</title>
   <style>
     .small-button {
@@ -29,9 +30,9 @@
       overflow: hidden; 
       word-wrap: break-word;
       height: 10px;
-      td {
-        width: 14%; /* 各セルの幅を均等に設定 (7日分のカレンダー列を考慮) */
-      }
+    }
+    td {
+      width: 14%;
     }
     .reserved {
       background-color: #f39c12;
@@ -124,6 +125,7 @@
   </div>
 
   <script>
+    
     window.editVehicle = function(index) {
         const v = vehicles[index];
         document.getElementById("vehicle-name").value = v.name;
@@ -137,11 +139,20 @@
       { name: "ミニバン・セレナ", plate: "沖縄527わ6833" }
     ];
 
-    
-　　const reservations = JSON.parse(localStorage.getItem("reservations") || "[]");
-　　function saveReservations() {
-    localStorage.setItem("reservations", JSON.stringify(reservations));
-　　}
+    // Firestoreとの一貫性を保つ
+    const reservations = [];
+
+    async function saveReservations() {
+      for (let res of reservations) {
+        if (res._id) {
+          await db.collection("reservations").doc(res._id).set(res);
+        } else {
+          const docRef = await db.collection("reservations").add(res);
+          res._id = docRef.id;
+        }
+      }
+    }
+
     const vehicleSelect = document.getElementById("vehicle-select");
     const calendarBody = document.getElementById("calendar-body");
     const calendarHeader = document.getElementById("calendar-header");
@@ -164,153 +175,150 @@
       const start = new Date(year, month, 1);
       const end = new Date(year, month + 1, 0);
       const days = [];
-      let d = new Date(start);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        days.push(new Date(d.getTime()));
+
+      for (let i = 0; i <= end.getDate() - 1; i++) {
+        const day = new Date(year, month, i + 1);
+        days.push(day);
       }
+
       return days;
     }
 
     function renderCalendarHeader(dates) {
-  calendarHeader.innerHTML = "";
+      calendarHeader.innerHTML = "";
 
-  const blankTh = document.createElement("th");
-  calendarHeader.appendChild(blankTh);
+      const blankTh = document.createElement("th");
+      calendarHeader.appendChild(blankTh);
 
-  const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
-  dates.forEach(d => {
-    const th = document.createElement("th");
-    // className = "rotated"; ← 縦書きをやめる
-    if (d.getDay() === 0 || d.getDay() === 6) th.classList.add("weekend");
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    const weekday = dayNames[d.getDay()];
-    th.innerHTML = `${m}/${day} (${weekday})`;  // 横向きで1行に表示
-    calendarHeader.appendChild(th);
-  });
-}
+      const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
+      dates.forEach(d => {
+        const th = document.createElement("th");
+        if (d.getDay() === 0 || d.getDay() === 6) th.classList.add("weekend");
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const weekday = dayNames[d.getDay()];
+        th.innerHTML = `${m}/${day} (${weekday})`;
+        calendarHeader.appendChild(th);
+      });
+    }
 
-function renderCalendar() {
-  const dateArray = getDateArray(currentYear, currentMonth);
-  renderCalendarHeader(dateArray);
-  calendarBody.innerHTML = "";
+    function renderCalendar() {
+      const dateArray = getDateArray(currentYear, currentMonth);
+      renderCalendarHeader(dateArray);
+      calendarBody.innerHTML = "";
 
-  vehicles.forEach(vehicle => {
-    const rows = [];
+      vehicles.forEach(vehicle => {
+        const rows = [];
 
-    reservations
-      .filter(res => res.plate === vehicle.plate)
-      .forEach((res, resIndex) => {
-        const resStart = new Date(`${res.start}T${res.startTime}`);
-        const resEnd = new Date(`${res.end}T${res.endTime}`);
+        reservations
+          .filter(res => res.plate === vehicle.plate)
+          .forEach((res, resIndex) => {
+            function parseDateTimeLocal(dateStr, timeStr) {
+              const [year, month, day] = dateStr.split("-").map(Number);
+              const [hour, minute] = timeStr.split(":").map(Number);
+              return new Date(year, month - 1, day, hour, minute);
+            }
 
-        // 予約の対象日範囲を取得
-        let startIndex = -1;
-        let endIndex = -1;
-        dateArray.forEach((d, i) => {
-          const dayStart = new Date(`${d.toISOString().slice(0, 10)}T00:00`);
-          const dayEnd = new Date(`${d.toISOString().slice(0, 10)}T23:59`);
-          if (startIndex === -1 && resStart <= dayEnd && resEnd >= dayStart) {
-            startIndex = i;
+            const resStart = parseDateTimeLocal(res.start, res.startTime);
+            const resEnd = parseDateTimeLocal(res.end, res.endTime);
+
+            let startIndex = -1;
+            let endIndex = -1;
+            dateArray.forEach((d, i) => {
+              const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+              const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0);
+
+              if (startIndex === -1 && resStart < dayEnd && resEnd >= dayStart) {
+                startIndex = i;
+              }
+              if (resStart < dayEnd && resEnd >= dayStart) {
+                endIndex = i;
+              }
+            });
+
+            if (startIndex === -1 || endIndex === -1) return;
+
+            const span = endIndex - startIndex + 1;
+
+            let targetRow = null;
+            for (let r = 0; r < rows.length; r++) {
+              const row = rows[r];
+              let conflict = false;
+              for (let i = startIndex; i <= endIndex; i++) {
+                if (row[i]) {
+                  conflict = true;
+                  break;
+                }
+              }
+              if (!conflict) {
+                targetRow = row;
+                break;
+              }
+            }
+
+            if (!targetRow) {
+              targetRow = Array(dateArray.length).fill(null);
+              rows.push(targetRow);
+            }
+
+            const cell = document.createElement("td");
+            cell.colSpan = span;
+            const div = document.createElement("div");
+            div.className = "reserved";
+            div.innerHTML = `
+              ${res.name}<br>${res.startTime}〜${res.endTime}
+              <br>
+              <button onclick="window.editReservation(${resIndex})" class="small-button">✏️</button>
+              <button onclick="window.deleteReservation(${resIndex})" class="small-button">🗑️</button>
+            `;
+            cell.appendChild(div);
+
+            targetRow[startIndex] = cell;
+            for (let i = startIndex + 1; i <= endIndex; i++) {
+              targetRow[i] = "span";
+            }
+          });
+
+        rows.forEach((rowCells, rowIndex) => {
+          const tr = document.createElement("tr");
+
+          if (rowIndex === 0) {
+            const labelCell = document.createElement("td");
+            labelCell.className = "vehicle-col";
+            labelCell.rowSpan = rows.length;
+            labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
+              <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
+            tr.appendChild(labelCell);
           }
-          if (resStart <= dayEnd && resEnd >= dayStart) {
-            endIndex = i;
-          }
-        });
 
-        if (startIndex === -1 || endIndex === -1) return;
-
-        const span = endIndex - startIndex + 1;
-
-        // 空いている行を探す（row[i] 全部が空いてる行）
-        let targetRow = null;
-        for (let r = 0; r < rows.length; r++) {
-          const row = rows[r];
-          let conflict = false;
-          for (let i = startIndex; i <= endIndex; i++) {
-            if (row[i]) {
-              conflict = true;
-              break;
+          for (let i = 0; i < dateArray.length; i++) {
+            const cell = rowCells[i];
+            if (cell && cell !== "span") {
+              tr.appendChild(cell);
+            } else if (!cell) {
+              tr.appendChild(document.createElement("td"));
             }
           }
-          if (!conflict) {
-            targetRow = row;
-            break;
+
+          calendarBody.appendChild(tr);
+        });
+
+        if (rows.length === 0) {
+          const tr = document.createElement("tr");
+          const labelCell = document.createElement("td");
+          labelCell.className = "vehicle-col";
+          labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
+            <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
+          tr.appendChild(labelCell);
+          for (let i = 0; i < dateArray.length; i++) {
+            tr.appendChild(document.createElement("td"));
           }
-        }
-
-        // 空いてる行がなければ新しく作る
-        if (!targetRow) {
-          targetRow = Array(dateArray.length).fill(null);
-          rows.push(targetRow);
-        }
-
-        // セル作成
-        const cell = document.createElement("td");
-        cell.colSpan = span;
-        const div = document.createElement("div");
-        div.className = "reserved";
-        div.innerHTML = `
-          ${res.name}<br>${res.startTime}〜${res.endTime}
-          <br>
-          <button onclick="window.editReservation(${resIndex})" class="small-button">✏️</button>
-          <button onclick="window.deleteReservation(${resIndex})" class="small-button">🗑️</button>
-        `;
-        cell.appendChild(div);
-
-        // 予約範囲にセルを埋める（1つだけ実セル、残りはプレースホルダー）
-        targetRow[startIndex] = cell;
-        for (let i = startIndex + 1; i <= endIndex; i++) {
-          targetRow[i] = "span"; // マークだけしておく（表示には使わない）
+          calendarBody.appendChild(tr);
         }
       });
 
-    // 表示用にtrを組み立てる
-    rows.forEach((rowCells, rowIndex) => {
-      const tr = document.createElement("tr");
-
-      if (rowIndex === 0) {
-        const labelCell = document.createElement("td");
-        labelCell.className = "vehicle-col";
-        labelCell.rowSpan = rows.length;
-        labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
-          <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
-        tr.appendChild(labelCell);
-      }
-
-      for (let i = 0; i < dateArray.length; i++) {
-        const cell = rowCells[i];
-        if (cell && cell !== "span") {
-          tr.appendChild(cell);
-        } else if (!cell) {
-          tr.appendChild(document.createElement("td"));
-        }
-        // span はスキップ（colSpanで結合されてる）
-      }
-
-      calendarBody.appendChild(tr);
-    });
-
-    if (rows.length === 0) {
-      const tr = document.createElement("tr");
-      const labelCell = document.createElement("td");
-      labelCell.className = "vehicle-col";
-      labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
-        <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
-      tr.appendChild(labelCell);
-      for (let i = 0; i < dateArray.length; i++) {
-        tr.appendChild(document.createElement("td"));
-      }
-      calendarBody.appendChild(tr);
+      monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
     }
-  });
-
-  monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
-}
-
-
-
-
 
     function changeMonth(offset) {
       currentMonth += offset;
@@ -321,6 +329,7 @@ function renderCalendar() {
         currentMonth = 11;
         currentYear--;
       }
+
       renderCalendar();
     }
 
@@ -344,59 +353,90 @@ function renderCalendar() {
       }
     };
 
-    document.getElementById("vehicle-form").addEventListener("submit", e => {
-  e.preventDefault();
-  const name = document.getElementById("vehicle-name").value.trim();
-  const plate = document.getElementById("vehicle-plate").value.trim();
-  const editIndex = document.getElementById("vehicle-edit-index").value;
+    document.getElementById("reservation-form").addEventListener("submit", (event) => {
+      event.preventDefault();
 
-  if (!name || !plate) return;
-
-  if (editIndex === "") {
-    vehicles.push({ name, plate });
-  } else {
-    vehicles[parseInt(editIndex)] = { name, plate };
-    document.getElementById("vehicle-edit-index").value = "";
-  }
-
-  updateVehicleSelect();
-  renderCalendar();
-  e.target.reset();
-});
-
-
-    document.getElementById("reservation-form").addEventListener("submit", e => {
-      e.preventDefault();
       const index = document.getElementById("edit-index").value;
-      const plate = vehicleSelect.value;
-      const name = document.getElementById("reserver-name").value;
-      const start = document.getElementById("start-date").value;
-      const end = document.getElementById("end-date").value;
-      const startTime = document.getElementById("start-time").value;
-      const endTime = document.getElementById("end-time").value;
-
-      if (start > end) {
-        alert("開始日は終了日より前にしてください。");
-        return;
-      }
-
-      const newReservation = { plate, name, start, end, startTime, endTime };
-
-
+      const newReservation = {
+        plate: vehicleSelect.value,
+        name: document.getElementById("reserver-name").value,
+        start: document.getElementById("start-date").value,
+        end: document.getElementById("end-date").value,
+        startTime: document.getElementById("start-time").value,
+        endTime: document.getElementById("end-time").value,
+      };
 
       if (index === "") {
         reservations.push(newReservation);
       } else {
-        reservations[parseInt(index)] = newReservation;
-        document.getElementById("edit-index").value = "";
+        reservations[index] = newReservation;
       }
+
       saveReservations();
       renderCalendar();
-      e.target.reset();
+      document.getElementById("reservation-form").reset();
+    });
+
+    document.getElementById("vehicle-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const index = document.getElementById("vehicle-edit-index").value;
+      const newVehicle = {
+        name: document.getElementById("vehicle-name").value,
+        plate: document.getElementById("vehicle-plate").value,
+      };
+
+      if (index === "") {
+        vehicles.push(newVehicle);
+      } else {
+        vehicles[index] = newVehicle;
+      }
+
+      updateVehicleSelect();
+      
+      async function loadReservations() {
+  const snapshot = await db.collection("reservations").get();
+  reservations.length = 0;
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    data._id = doc.id;
+    reservations.push(data);
+  });
+  renderCalendar();
+}
+
+// ページロード時に呼ぶ
+loadReservations(); // ← ページ読み込み時にFirestoreから予約取得
+      
+      saveReservations();
+      
+      document.getElementById("vehicle-form").reset();
     });
 
     updateVehicleSelect();
     renderCalendar();
   </script>
+
+  <!-- Firebase Configuration -->
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCaI_ohlnOsCmJNZAnlI3fu_v4qwu3ISE8",
+      authDomain: "vehicle-reservation-1d102.firebaseapp.com",
+      projectId: "vehicle-reservation-1d102",
+      storageBucket: "vehicle-reservation-1d102.appspot.com",
+      messagingSenderId: "461824545561",
+      appId: "1:461824545561:web:3541f5b4d08e1fa14e6b88",
+      measurementId: "G-F91TRFFKHG"
+    };
+  
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+  </script>
+  
+
+  </script>
+
 </body>
-</html> 
+</html>
