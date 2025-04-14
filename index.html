@@ -168,7 +168,7 @@
     }
 
     // 📊 カレンダーを描画
-   function renderCalendar() {
+    function renderCalendar() {
   const dates = getDateArray(currentYear, currentMonth);
   calendarHeader.innerHTML = "<th>車両名 / ナンバー</th>";
   dates.forEach(d => {
@@ -188,46 +188,79 @@
     let dayIndex = 0;
     while (dayIndex < dates.length) {
       const currentDate = dates[dayIndex];
-      const dayStr = currentDate.toISOString().split("T")[0];
+      const currentStr = currentDate.toISOString().split("T")[0];
 
-      // その日から始まる予約を探す
-      const matchingReservation = reservations.find(r => {
+      // その日を含むすべての予約（plate一致）
+      const dayReservations = reservations.filter(r => {
         if (r.plate !== vehicle.plate) return false;
-        return r.start === dayStr;
+        const start = new Date(`${r.start}T${r.startTime}`);
+        const end = new Date(`${r.end}T${r.endTime}`);
+        const target = new Date(currentDate.toDateString());
+        return target >= new Date(start.toDateString()) && target <= new Date(end.toDateString());
       });
 
-      if (matchingReservation) {
-        // 予約がある → colspan を計算
-        const start = new Date(`${matchingReservation.start}T00:00:00`);
-        const end = new Date(`${matchingReservation.end}T00:00:00`);
-        let spanDays = 1;
+      // すでに描画済みの予約かどうかを避ける
+      const alreadyRendered = new Set();
 
-        while (
-          dayIndex + spanDays < dates.length &&
-          new Date(dates[dayIndex + spanDays]) <= end
-        ) {
-          spanDays++;
-        }
+      // この日が予約の開始日になっている予約だけ、colspan で結合表示する
+      const reservationsStartingToday = dayReservations.filter(r => r.start === currentStr);
 
+      if (reservationsStartingToday.length > 0) {
         const cell = document.createElement("td");
-        cell.colSpan = spanDays;
         cell.className = "reserved";
 
-        const box = document.createElement("div");
-        box.className = "reservation-box";
-        box.innerHTML = `
-          ${matchingReservation.name}<br>
-          ${matchingReservation.startTime}〜${matchingReservation.endTime}
-          <button onclick="editReservation('${matchingReservation.id}')">編集</button>
-          <button onclick="deleteReservation('${matchingReservation.id}')">削除</button>
-        `;
+        let maxSpan = 1;
 
-        cell.appendChild(box);
+        reservationsStartingToday.forEach((res, i) => {
+          const start = new Date(`${res.start}T00:00:00`);
+          const end = new Date(`${res.end}T00:00:00`);
+
+          // 結合日数を計算
+          let span = 1;
+          while (
+            dayIndex + span < dates.length &&
+            new Date(dates[dayIndex + span]) <= end
+          ) {
+            span++;
+          }
+
+          if (span > maxSpan) maxSpan = span;
+
+          const box = document.createElement("div");
+          box.className = "reservation-box";
+          box.innerHTML = `
+            ${res.name}<br>${res.startTime}〜${res.endTime}
+            <button onclick="editReservation('${res.id}')">編集</button>
+            <button onclick="deleteReservation('${res.id}')">削除</button>
+          `;
+          cell.appendChild(box);
+
+          alreadyRendered.add(res.id);
+        });
+
+        cell.colSpan = maxSpan;
         row.appendChild(cell);
+        dayIndex += maxSpan;
+      } else if (dayReservations.length > 0) {
+        // この日が途中の予約日 → 重複を表示（colspan は 1）
+        const cell = document.createElement("td");
+        cell.className = "reserved";
 
-        dayIndex += spanDays;
+        dayReservations.forEach(res => {
+          const box = document.createElement("div");
+          box.className = "reservation-box";
+          box.innerHTML = `
+            ${res.name}<br>${res.startTime}〜${res.endTime}
+            <button onclick="editReservation('${res.id}')">編集</button>
+            <button onclick="deleteReservation('${res.id}')">削除</button>
+          `;
+          cell.appendChild(box);
+        });
+
+        row.appendChild(cell);
+        dayIndex += 1;
       } else {
-        // 予約がない日 → 空セル
+        // 予約なし
         const emptyCell = document.createElement("td");
         row.appendChild(emptyCell);
         dayIndex++;
@@ -239,6 +272,7 @@
 
   monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
 }
+
 
     // 🔄 月を変更
     function changeMonth(offset) {
