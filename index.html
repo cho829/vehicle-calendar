@@ -169,67 +169,56 @@
 
     // 📊 カレンダーを描画
     function renderCalendar() {
-      const dates = getDateArray(currentYear, currentMonth);
-      calendarHeader.innerHTML = "<th>車両名 / ナンバー</th>";
-      dates.forEach(d => {
-        const th = document.createElement("th");
-        th.textContent = `${d.getMonth() + 1}/${d.getDate()} (${["日", "月", "火", "水", "木", "金", "土"][d.getDay()]})`;
-        calendarHeader.appendChild(th);
-      });
+  const dates = getDateArray(currentYear, currentMonth);
+  calendarHeader.innerHTML = "<th>車両名 / ナンバー</th>";
+  dates.forEach(d => {
+    const th = document.createElement("th");
+    th.textContent = `${d.getMonth() + 1}/${d.getDate()} (${["日", "月", "火", "水", "木", "金", "土"][d.getDay()]})`;
+    calendarHeader.appendChild(th);
+  });
 
-      calendarBody.innerHTML = "";
-      vehicles.forEach(vehicle => {
-  const row = document.createElement("tr");
-  const td = document.createElement("td");
-  td.textContent = `${vehicle.name} / ${vehicle.plate}`;
-  row.appendChild(td);
+  calendarBody.innerHTML = "";
+  vehicles.forEach(vehicle => {
+    const row = document.createElement("tr");
+    const td = document.createElement("td");
+    td.textContent = `${vehicle.name} / ${vehicle.plate}`;
+    row.appendChild(td);
 
-  let i = 0;
-  while (i < dates.length) {
-    const day = dates[i];
+    dates.forEach(day => {
+      const cell = document.createElement("td");
+      const cellDateStr = day.toISOString().split("T")[0];
+      const matchedReservations = reservations
+        .filter(r => {
+          if (r.plate !== vehicle.plate) return false;
+          const start = new Date(`${r.start}T${r.startTime}`);
+          const end = new Date(`${r.end}T${r.endTime}`);
+          const target = new Date(day.toDateString());
+          return target >= new Date(start.toDateString()) && target <= new Date(end.toDateString());
+        })
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)); // 時間順にソート
 
-    // この日から始まる予約があるか探す
-          const reservation = reservations.find(r => {
-      if (r.plate !== vehicle.plate) return false;
-      const start = new Date(`${r.start}T${r.startTime}`);
-      const end = new Date(`${r.end}T${r.endTime}`);
-      const target = new Date(day.toDateString());
-      return target >= new Date(start.toDateString()) && target <= new Date(end.toDateString());
+      if (matchedReservations.length > 0) {
+        cell.className = "reserved";
+        matchedReservations.forEach((r, i) => {
+          const box = document.createElement("div");
+          box.className = "reservation-box";
+          box.innerHTML = `
+            ${r.name}<br>${r.startTime}〜${r.endTime}
+            <button onclick="editReservation('${r.id}')">編集</button>
+            <button onclick="deleteReservation('${r.id}')">削除</button>
+          `;
+          cell.appendChild(box);
+        });
+      }
+
+      row.appendChild(cell);
     });
 
+    calendarBody.appendChild(row);
+  });
 
-
-
-    if (reservation) {
-      const start = new Date(`${reservation.start}T${reservation.startTime}`);
-      const end = new Date(`${reservation.end}T${reservation.endTime}`);
-
-      // 期間中の何日分か数える
-      const span = dates.filter(d => d >= new Date(start.toDateString()) && d <= new Date(end.toDateString())).length;
-
-      const cell = document.createElement("td");
-      cell.className = "reserved";
-      cell.colSpan = span;
-      cell.innerHTML = `
-  ${reservation.name}<br>${reservation.startTime}〜${reservation.endTime}<br>
-  <button onclick="editReservation('${reservation.id}')">編集</button>
-  <button onclick="deleteReservation('${reservation.id}')">削除</button>
-`;
-      row.appendChild(cell);
-
-      i += span; // span分スキップ
-    } else {
-      const empty = document.createElement("td");
-      row.appendChild(empty);
-      i++;
-    }
-  }
-
-  calendarBody.appendChild(row);
-});
-
-      monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
-    }
+  monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
+}
 
     // 🔄 月を変更
     function changeMonth(offset) {
