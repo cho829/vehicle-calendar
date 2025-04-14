@@ -142,17 +142,6 @@
     // Firestoreとの一貫性を保つ
     const reservations = [];
 
-    async function saveReservations() {
-      for (let res of reservations) {
-        if (res._id) {
-          await db.collection("reservations").doc(res._id).set(res);
-        } else {
-          const docRef = await db.collection("reservations").add(res);
-          res._id = docRef.id;
-        }
-      }
-    }
-
     const vehicleSelect = document.getElementById("vehicle-select");
     const calendarBody = document.getElementById("calendar-body");
     const calendarHeader = document.getElementById("calendar-header");
@@ -346,37 +335,40 @@
       window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
-    window.deleteReservation = function(index) {
-      if (confirm("この予約を削除してもよろしいですか？")) {
-        reservations.splice(index, 1);
-        saveReservations();
-        renderCalendar();
-      }
-    };
+   window.deleteReservation = async function(index) {
+  if (confirm("この予約を削除してもよろしいですか？")) {
+    await db.collection("reservations").doc(reservations[index]._id).delete();
+    reservations.splice(index, 1);
+    renderCalendar();
+  }
+};
 
-    document.getElementById("reservation-form").addEventListener("submit", (event) => {
-      event.preventDefault();
+    document.getElementById("reservation-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
 
-      const index = document.getElementById("edit-index").value;
-      const newReservation = {
-        plate: vehicleSelect.value,
-        name: document.getElementById("reserver-name").value,
-        start: document.getElementById("start-date").value,
-        end: document.getElementById("end-date").value,
-        startTime: document.getElementById("start-time").value,
-        endTime: document.getElementById("end-time").value,
-      };
+  const index = document.getElementById("edit-index").value;
+  const newReservation = {
+    plate: vehicleSelect.value,
+    name: document.getElementById("reserver-name").value,
+    start: document.getElementById("start-date").value,
+    end: document.getElementById("end-date").value,
+    startTime: document.getElementById("start-time").value,
+    endTime: document.getElementById("end-time").value,
+  };
 
-      if (index === "") {
-        reservations.push(newReservation);
-      } else {
-        reservations[index] = newReservation;
-      }
+  if (index === "") {
+    const docRef = await db.collection("reservations").add(newReservation);
+    newReservation._id = docRef.id;
+    reservations.push(newReservation);
+  } else {
+    newReservation._id = reservations[index]._id;
+    await db.collection("reservations").doc(newReservation._id).set(newReservation);
+    reservations[index] = newReservation;
+  }
 
-      saveReservations();
-      renderCalendar();
-      document.getElementById("reservation-form").reset();
-    });
+  renderCalendar();
+  document.getElementById("reservation-form").reset();
+});
 
     document.getElementById("vehicle-form").addEventListener("submit", (event) => {
       event.preventDefault();
