@@ -224,18 +224,18 @@
 
             let startIndex = -1;
             let endIndex = -1;
-            dateArray.forEach((d, i) => {
-              const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-              const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
+           dateArray.forEach((d, i) => {
+  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+  const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59); // ← 修正
 
+  if (startIndex === -1 && resStart <= dayEnd && resEnd >= dayStart) {
+    startIndex = i;
+  }
+  if (resStart <= dayEnd && resEnd >= dayStart) {
+    endIndex = i;
+  }
+});
 
-              if (startIndex === -1 && resStart < dayEnd && resEnd >= dayStart) {
-                startIndex = i;
-              }
-              if (resStart < dayEnd && resEnd >= dayStart) {
-                endIndex = i;
-              }
-            });
 
             if (startIndex === -1 || endIndex === -1) return;
 
