@@ -5,72 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>車両予約カレンダー</title>
   <style>
-    .small-button {
-        font-size: 3%;
-        padding: 2px 4px;
-    }
-
-    body { font-family: sans-serif; padding: 20px; }
-    form { margin-bottom: 20px; }
-    label { display: inline-block; width: 100px; margin-right: 5px; }
-    input, select { margin-bottom: 10px; }
-
-    .calendar-container {
-      overflow-x: auto;
-      max-width: 100%;
-    }
-
-    table { border-collapse: collapse; table-layout: fixed; min-width: 50%; }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 3px;
-      text-align: center;
-      font-size: 5px;
-      vertical-align: top;
-      overflow: hidden; 
-      word-wrap: break-word;
-      height: 10px;
-    }
-    td {
-      width: 14%;
-    }
-    .reserved {
-      background-color: #f39c12;
-      color: white;
-      border-radius: 4px;
-      margin: 2px 0;
-      padding: 2px;
-      display: block;
-      font-size: 5px;
-      position: relative;
-      max-width: 100%;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      white-space: normal;
-    }
-    .reserved button {
-      background: none;
-      border: none;
-      color: white;
-      cursor: pointer;
-      font-size: 3px;
-      margin-left: 4px;
-    }
-
-    .vehicle-col {
-      text-align: left;
-      white-space: nowrap;
-      padding-left: 8px;
-    }
-    .rotated {
-      writing-mode: vertical-rl;
-      white-space: nowrap;
-      font-size: 10px;
-    }
-    .weekend { background-color: #eef; }
-    .month-controls {
-      margin-bottom: 20px;
-    }
+    /* カレンダーデザイン省略：先ほどのCSSでOK */
   </style>
 </head>
 <body>
@@ -116,40 +51,101 @@
         <tr>
           <th>車両名 / 車番</th>
         </tr>
-        <tr id="calendar-header">
-          <th></th>
-        </tr>
+        <tr id="calendar-header"><th></th></tr>
       </thead>
       <tbody id="calendar-body"></tbody>
     </table>
   </div>
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
   <script>
-    
-    window.editVehicle = function(index) {
-        const v = vehicles[index];
-        document.getElementById("vehicle-name").value = v.name;
-        document.getElementById("vehicle-plate").value = v.plate;
-        document.getElementById("vehicle-edit-index").value = index;
-        window.scrollTo({ top: 0, behavior: "smooth" });
+    // Firebase 初期化
+    const firebaseConfig = {
+      apiKey: "AIzaSyCaI_ohlnOsCmJNZAnlI3fu_v4qwu3ISE8",
+      authDomain: "vehicle-reservation-1d102.firebaseapp.com",
+      projectId: "vehicle-reservation-1d102",
+      storageBucket: "vehicle-reservation-1d102.appspot.com",
+      messagingSenderId: "461824545561",
+      appId: "1:461824545561:web:3541f5b4d08e1fa14e6b88"
     };
-    const vehicles = [
-      { name: "ミニバン・ラフェスタ", plate: "沖縄528わ6514" },
-      { name: "ミニバン・ビアンテ", plate: "沖縄328わ766" },
-      { name: "ミニバン・セレナ", plate: "沖縄527わ6833" }
-    ];
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
-    // Firestoreとの一貫性を保つ
+    // グローバル変数
+    const vehicles = [];
     const reservations = [];
-
     const vehicleSelect = document.getElementById("vehicle-select");
     const calendarBody = document.getElementById("calendar-body");
     const calendarHeader = document.getElementById("calendar-header");
     const monthLabel = document.getElementById("month-label");
+    let currentYear = new Date().getFullYear();
+    let currentMonth = new Date().getMonth();
 
-    let currentYear = 2025;
-    let currentMonth = 3;
+    // 日付配列取得
+    function getDateArray(year, month) {
+      const days = [];
+      const date = new Date(year, month, 1);
+      while (date.getMonth() === month) {
+        days.push(new Date(date));
+        date.setDate(date.getDate() + 1);
+      }
+      return days;
+    }
 
+    // カレンダー描画
+    function renderCalendar() {
+      const dates = getDateArray(currentYear, currentMonth);
+      calendarHeader.innerHTML = "<th></th>";
+      dates.forEach(d => {
+        const th = document.createElement("th");
+        th.textContent = `${d.getMonth() + 1}/${d.getDate()} (${["日", "月", "火", "水", "木", "金", "土"][d.getDay()]})`;
+        calendarHeader.appendChild(th);
+      });
+
+      calendarBody.innerHTML = "";
+      vehicles.forEach(vehicle => {
+        const filtered = reservations.filter(r => r.plate === vehicle.plate);
+        const row = document.createElement("tr");
+        const td = document.createElement("td");
+        td.textContent = `${vehicle.name} / ${vehicle.plate}`;
+        row.appendChild(td);
+
+        dates.forEach(day => {
+          const cell = document.createElement("td");
+          const matched = filtered.find(r => {
+            const start = new Date(`${r.start}T${r.startTime}`);
+            const end = new Date(`${r.end}T${r.endTime}`);
+            return day >= start && day <= end;
+          });
+          if (matched) {
+            cell.innerHTML = `${matched.name}<br>${matched.startTime}〜${matched.endTime}`;
+            cell.style.background = "#f39c12";
+            cell.style.color = "#fff";
+          }
+          row.appendChild(cell);
+        });
+        calendarBody.appendChild(row);
+      });
+
+      monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
+    }
+
+    // 月移動
+    function changeMonth(offset) {
+      currentMonth += offset;
+      if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+      } else if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+      }
+      renderCalendar();
+    }
+
+    // 車両セレクト更新
     function updateVehicleSelect() {
       vehicleSelect.innerHTML = "";
       vehicles.forEach(vehicle => {
@@ -160,281 +156,66 @@
       });
     }
 
-    function getDateArray(year, month) {
-      const start = new Date(year, month, 1);
-      const end = new Date(year, month + 1, 0);
-      const days = [];
-
-      for (let i = 0; i <= end.getDate() - 1; i++) {
-        const day = new Date(year, month, i + 1);
-        days.push(day);
-      }
-
-      return days;
-    }
-
-    function renderCalendarHeader(dates) {
-      calendarHeader.innerHTML = "";
-
-      const blankTh = document.createElement("th");
-      calendarHeader.appendChild(blankTh);
-
-      const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
-      dates.forEach(d => {
-        const th = document.createElement("th");
-        if (d.getDay() === 0 || d.getDay() === 6) th.classList.add("weekend");
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        const weekday = dayNames[d.getDay()];
-        th.innerHTML = `${m}/${day} (${weekday})`;
-        calendarHeader.appendChild(th);
+    // Firestoreから予約取得
+    async function loadReservations() {
+      const snapshot = await db.collection("reservations").get();
+      reservations.length = 0;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        data._id = doc.id;
+        reservations.push(data);
       });
-    }
-
-    function renderCalendar() {
-      const dateArray = getDateArray(currentYear, currentMonth);
-      renderCalendarHeader(dateArray);
-      calendarBody.innerHTML = "";
-
-      vehicles.forEach(vehicle => {
-        const rows = [];
-
-        reservations
-          .filter(res => res.plate === vehicle.plate)
-          .forEach((res, resIndex) => {
-            function parseDateTimeLocal(dateStr, timeStr) {
-              const [year, month, day] = dateStr.split("-").map(Number);
-              const [hour, minute] = timeStr.split(":").map(Number);
-              return new Date(year, month - 1, day, hour, minute);
-            }
-
-            const resStart = parseDateTimeLocal(res.start, res.startTime);
-            const resEnd = parseDateTimeLocal(res.end, res.endTime);
-
-            let startIndex = -1;
-            let endIndex = -1;
-           dateArray.forEach((d, i) => {
-  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-  const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59); // ← 修正
-
-  if (startIndex === -1 && resStart <= dayEnd && resEnd >= dayStart) {
-    startIndex = i;
-  }
-  if (resStart <= dayEnd && resEnd >= dayStart) {
-    endIndex = i;
-  }
-});
-
-
-            if (startIndex === -1 || endIndex === -1) return;
-
-            const span = endIndex - startIndex + 1;
-
-            let targetRow = null;
-            for (let r = 0; r < rows.length; r++) {
-              const row = rows[r];
-              let conflict = false;
-              for (let i = startIndex; i <= endIndex; i++) {
-                if (row[i]) {
-                  conflict = true;
-                  break;
-                }
-              }
-              if (!conflict) {
-                targetRow = row;
-                break;
-              }
-            }
-
-            if (!targetRow) {
-              targetRow = Array(dateArray.length).fill(null);
-              rows.push(targetRow);
-            }
-
-            const cell = document.createElement("td");
-            cell.colSpan = span;
-            const div = document.createElement("div");
-            div.className = "reserved";
-            div.innerHTML = `
-              ${res.name}<br>${res.startTime}〜${res.endTime}
-              <br>
-              <button onclick="window.editReservation(${resIndex})" class="small-button">✏️</button>
-              <button onclick="window.deleteReservation(${resIndex})" class="small-button">🗑️</button>
-            `;
-            cell.appendChild(div);
-
-            targetRow[startIndex] = cell;
-            for (let i = startIndex + 1; i <= endIndex; i++) {
-              targetRow[i] = "span";
-            }
-          });
-
-        rows.forEach((rowCells, rowIndex) => {
-          const tr = document.createElement("tr");
-
-          if (rowIndex === 0) {
-            const labelCell = document.createElement("td");
-            labelCell.className = "vehicle-col";
-            labelCell.rowSpan = rows.length;
-            labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
-              <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
-            tr.appendChild(labelCell);
-          }
-
-          for (let i = 0; i < dateArray.length; i++) {
-            const cell = rowCells[i];
-            if (cell && cell !== "span") {
-              tr.appendChild(cell);
-            } else if (!cell) {
-              tr.appendChild(document.createElement("td"));
-            }
-          }
-
-          calendarBody.appendChild(tr);
-        });
-
-        if (rows.length === 0) {
-          const tr = document.createElement("tr");
-          const labelCell = document.createElement("td");
-          labelCell.className = "vehicle-col";
-          labelCell.innerHTML = ` ${vehicle.name} / ${vehicle.plate}
-            <button onclick="editVehicle(${vehicles.indexOf(vehicle)})" class="small-button">✏️</button>`;
-          tr.appendChild(labelCell);
-          for (let i = 0; i < dateArray.length; i++) {
-            tr.appendChild(document.createElement("td"));
-          }
-          calendarBody.appendChild(tr);
-        }
-      });
-
-      monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
-    }
-
-    function changeMonth(offset) {
-      currentMonth += offset;
-      if (currentMonth > 11) {
-        currentMonth = 0;
-        currentYear++;
-      } else if (currentMonth < 0) {
-        currentMonth = 11;
-        currentYear--;
-      }
-
       renderCalendar();
     }
 
-    window.editReservation = function(index) {
-      const r = reservations[index];
-      document.getElementById("edit-index").value = index;
-      vehicleSelect.value = r.plate;
-      document.getElementById("reserver-name").value = r.name;
-      document.getElementById("start-date").value = r.start;
-      document.getElementById("end-date").value = r.end;
-      document.getElementById("start-time").value = r.startTime;
-      document.getElementById("end-time").value = r.endTime;
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    };
+    // 初期表示
+    window.addEventListener("DOMContentLoaded", async () => {
+      // 仮：初期車両を設定
+      vehicles.push(
+        { name: "ミニバン・ラフェスタ", plate: "沖縄528わ6514" },
+        { name: "ミニバン・ビアンテ", plate: "沖縄328わ766" },
+        { name: "ミニバン・セレナ", plate: "沖縄527わ6833" }
+      );
+      updateVehicleSelect();
+      await loadReservations();
+    });
 
-   window.deleteReservation = async function(index) {
-  if (confirm("この予約を削除してもよろしいですか？")) {
-    await db.collection("reservations").doc(reservations[index]._id).delete();
-    reservations.splice(index, 1);
-    renderCalendar();
-  }
-};
-
-    document.getElementById("reservation-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  const index = document.getElementById("edit-index").value;
-  const newReservation = {
-    plate: vehicleSelect.value,
-    name: document.getElementById("reserver-name").value,
-    start: document.getElementById("start-date").value,
-    end: document.getElementById("end-date").value,
-    startTime: document.getElementById("start-time").value,
-    endTime: document.getElementById("end-time").value,
-  };
-
-  if (index === "") {
-    const docRef = await db.collection("reservations").add(newReservation);
-    newReservation._id = docRef.id;
-    reservations.push(newReservation);
-  } else {
-    newReservation._id = reservations[index]._id;
-    await db.collection("reservations").doc(newReservation._id).set(newReservation);
-    reservations[index] = newReservation;
-  }
-
-  renderCalendar();
-  document.getElementById("reservation-form").reset();
-});
-
-    document.getElementById("vehicle-form").addEventListener("submit", (event) => {
-      event.preventDefault();
-
-      const index = document.getElementById("vehicle-edit-index").value;
-      const newVehicle = {
-        name: document.getElementById("vehicle-name").value,
-        plate: document.getElementById("vehicle-plate").value,
+    // 予約追加フォーム処理
+    document.getElementById("reservation-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const index = document.getElementById("edit-index").value;
+      const newReservation = {
+        plate: vehicleSelect.value,
+        name: document.getElementById("reserver-name").value,
+        start: document.getElementById("start-date").value,
+        end: document.getElementById("end-date").value,
+        startTime: document.getElementById("start-time").value,
+        endTime: document.getElementById("end-time").value
       };
 
       if (index === "") {
-        vehicles.push(newVehicle);
+        const doc = await db.collection("reservations").add(newReservation);
+        newReservation._id = doc.id;
       } else {
-        vehicles[index] = newVehicle;
+        newReservation._id = reservations[index]._id;
+        await db.collection("reservations").doc(newReservation._id).set(newReservation);
       }
 
-      updateVehicleSelect();
-      
-      async function loadReservations() {
-  const snapshot = await db.collection("reservations").get();
-  reservations.length = 0;
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    data._id = doc.id;
-    reservations.push(data);
-  });
-  renderCalendar();
-}
-
-window.addEventListener("DOMContentLoaded", () => {
-  updateVehicleSelect();   // 車両選択肢を更新
-  loadReservations();      // 予約データをFirestoreから読み込む
-});
-
-// ページロード時に呼ぶ
-loadReservations(); // ← ページ読み込み時にFirestoreから予約取得
-      
-      saveReservations();
-      
-      document.getElementById("vehicle-form").reset();
+      document.getElementById("reservation-form").reset();
+      document.getElementById("edit-index").value = "";
+      await loadReservations();
     });
 
-    updateVehicleSelect();
-    renderCalendar();
+    // 車両追加フォーム処理
+    document.getElementById("vehicle-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = document.getElementById("vehicle-name").value;
+      const plate = document.getElementById("vehicle-plate").value;
+      vehicles.push({ name, plate });
+      updateVehicleSelect();
+      renderCalendar();
+      document.getElementById("vehicle-form").reset();
+    });
   </script>
-
-  <!-- Firebase Configuration -->
-  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyCaI_ohlnOsCmJNZAnlI3fu_v4qwu3ISE8",
-      authDomain: "vehicle-reservation-1d102.firebaseapp.com",
-      projectId: "vehicle-reservation-1d102",
-      storageBucket: "vehicle-reservation-1d102.appspot.com",
-      messagingSenderId: "461824545561",
-      appId: "1:461824545561:web:3541f5b4d08e1fa14e6b88",
-      measurementId: "G-F91TRFFKHG"
-    };
-  
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-  </script>
-  
-
-  </script>
-
 </body>
 </html>
