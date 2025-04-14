@@ -260,7 +260,9 @@
     startTime: document.getElementById("start-time").value,
     endTime: document.getElementById("end-time").value
   };
-
+ 
+  console.log("予約データを送信:", data); // ← ★ ここ追加！
+      
   const editingId = form.dataset.editingId;
   if (editingId) {
     // 編集中 → 更新処理
