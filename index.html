@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8">function renderCalendar() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>車両予約カレンダー</title>
   <style>
@@ -178,6 +178,7 @@
   });
 
   calendarBody.innerHTML = "";
+
   vehicles.forEach(vehicle => {
     const row = document.createElement("tr");
     const nameCell = document.createElement("td");
@@ -186,54 +187,52 @@
 
     let dayIndex = 0;
     while (dayIndex < dates.length) {
-  const currentDate = dates[dayIndex];
-  const dayStr = currentDate.toISOString().split("T")[0];
+      const currentDate = dates[dayIndex];
+      const dayStr = currentDate.toISOString().split("T")[0];
 
-  // 対象の予約を探す
-  const ongoingReservations = reservations.filter(r => {
-    if (r.plate !== vehicle.plate) return false;
-    const start = new Date(`${r.start}T${r.startTime}`);
-    const end = new Date(`${r.end}T${r.endTime}`);
-    const target = new Date(currentDate.toDateString());
-    return target >= new Date(start.toDateString()) && target <= new Date(end.toDateString());
-  });
+      // その日から始まる予約を探す
+      const matchingReservation = reservations.find(r => {
+        if (r.plate !== vehicle.plate) return false;
+        return r.start === dayStr;
+      });
 
-  if (ongoingReservations.length === 0) {
-    const emptyCell = document.createElement("td");
-    row.appendChild(emptyCell);
-    dayIndex++;
-    continue;
-  }
+      if (matchingReservation) {
+        // 予約がある → colspan を計算
+        const start = new Date(`${matchingReservation.start}T00:00:00`);
+        const end = new Date(`${matchingReservation.end}T00:00:00`);
+        let spanDays = 1;
 
-  const cell = document.createElement("td");
-  cell.className = "reserved";
+        while (
+          dayIndex + spanDays < dates.length &&
+          new Date(dates[dayIndex + spanDays]) <= end
+        ) {
+          spanDays++;
+        }
 
-  // 同じ予約が次の日も続いているかチェック
-  const res = ongoingReservations[0];
-  const startDate = new Date(res.start);
-  const endDate = new Date(res.end);
-  const spanDays = (endDate - startDate) / (1000 * 60 * 60 * 24) + 1;
+        const cell = document.createElement("td");
+        cell.colSpan = spanDays;
+        cell.className = "reserved";
 
-  let colspan = 1;
-  while (
-    dayIndex + colspan < dates.length &&
-    new Date(dates[dayIndex + colspan]) <= endDate
-  ) {
-    colspan++;
-  }
+        const box = document.createElement("div");
+        box.className = "reservation-box";
+        box.innerHTML = `
+          ${matchingReservation.name}<br>
+          ${matchingReservation.startTime}〜${matchingReservation.endTime}
+          <button onclick="editReservation('${matchingReservation.id}')">編集</button>
+          <button onclick="deleteReservation('${matchingReservation.id}')">削除</button>
+        `;
 
-  cell.colSpan = colspan;
-  cell.innerHTML = `
-    <div class="reservation-box">
-      ${res.name}<br>${res.startTime}〜${res.endTime}
-      <button onclick="editReservation('${res.id}')">編集</button>
-      <button onclick="deleteReservation('${res.id}')">削除</button>
-    </div>
-  `;
+        cell.appendChild(box);
+        row.appendChild(cell);
 
-  row.appendChild(cell);
-  dayIndex += colspan;
-}
+        dayIndex += spanDays;
+      } else {
+        // 予約がない日 → 空セル
+        const emptyCell = document.createElement("td");
+        row.appendChild(emptyCell);
+        dayIndex++;
+      }
+    }
 
     calendarBody.appendChild(row);
   });
