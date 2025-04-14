@@ -5,14 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>車両予約カレンダー</title>
   <style>
-    /* カレンダーデザイン省略：先ほどのCSSでOK */
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid #999;
+      padding: 5px;
+      text-align: center;
+    }
+    th {
+      background-color: #eee;
+    }
+    td.reserved {
+      background-color: #f39c12;
+      color: white;
+    }
   </style>
 </head>
 <body>
 
   <h2>🚗 車両を追加</h2>
   <form id="vehicle-form">
-    <input type="hidden" id="vehicle-edit-index" value="">
     <label>車両名:</label>
     <input type="text" id="vehicle-name" required><br />
     <label>ナンバー:</label>
@@ -22,7 +36,6 @@
 
   <h2>📅 予約を追加 / 編集</h2>
   <form id="reservation-form">
-    <input type="hidden" id="edit-index" value="">
     <label>車両:</label>
     <select id="vehicle-select"></select><br />
     <label>予約者名:</label>
@@ -35,7 +48,7 @@
     <input type="time" id="start-time" required><br />
     <label>返却時間:</label>
     <input type="time" id="end-time" required><br />
-    <button type="submit">予約を追加 / 更新</button>
+    <button type="submit">予約を追加</button>
   </form>
 
   <h2>📊 車両予約カレンダー</h2>
@@ -48,10 +61,7 @@
   <div class="calendar-container">
     <table>
       <thead>
-        <tr>
-          <th>車両名 / 車番</th>
-        </tr>
-        <tr id="calendar-header"><th></th></tr>
+        <tr id="calendar-header"><th>車両名 / 車番</th></tr>
       </thead>
       <tbody id="calendar-body"></tbody>
     </table>
@@ -73,31 +83,30 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // グローバル変数
-    const vehicles = [];
-    const reservations = [];
-    const vehicleSelect = document.getElementById("vehicle-select");
-    const calendarBody = document.getElementById("calendar-body");
-    const calendarHeader = document.getElementById("calendar-header");
-    const monthLabel = document.getElementById("month-label");
     let currentYear = new Date().getFullYear();
     let currentMonth = new Date().getMonth();
 
-    // 日付配列取得
+    const vehicles = [];
+    const reservations = [];
+
+    const vehicleSelect = document.getElementById("vehicle-select");
+    const calendarHeader = document.getElementById("calendar-header");
+    const calendarBody = document.getElementById("calendar-body");
+    const monthLabel = document.getElementById("month-label");
+
     function getDateArray(year, month) {
-      const days = [];
+      const dates = [];
       const date = new Date(year, month, 1);
       while (date.getMonth() === month) {
-        days.push(new Date(date));
+        dates.push(new Date(date));
         date.setDate(date.getDate() + 1);
       }
-      return days;
+      return dates;
     }
 
-    // カレンダー描画
     function renderCalendar() {
       const dates = getDateArray(currentYear, currentMonth);
-      calendarHeader.innerHTML = "<th></th>";
+      calendarHeader.innerHTML = "<th>車両名 / 車番</th>";
       dates.forEach(d => {
         const th = document.createElement("th");
         th.textContent = `${d.getMonth() + 1}/${d.getDate()} (${["日", "月", "火", "水", "木", "金", "土"][d.getDay()]})`;
@@ -106,33 +115,33 @@
 
       calendarBody.innerHTML = "";
       vehicles.forEach(vehicle => {
-        const filtered = reservations.filter(r => r.plate === vehicle.plate);
         const row = document.createElement("tr");
-        const td = document.createElement("td");
-        td.textContent = `${vehicle.name} / ${vehicle.plate}`;
-        row.appendChild(td);
+        const firstCell = document.createElement("td");
+        firstCell.textContent = `${vehicle.name} / ${vehicle.plate}`;
+        row.appendChild(firstCell);
 
         dates.forEach(day => {
           const cell = document.createElement("td");
-          const matched = filtered.find(r => {
+          const match = reservations.find(r => {
+            if (r.plate !== vehicle.plate) return false;
             const start = new Date(`${r.start}T${r.startTime}`);
             const end = new Date(`${r.end}T${r.endTime}`);
-            return day >= start && day <= end;
+            const current = new Date(day);
+            return current >= new Date(start.toDateString()) && current <= new Date(end.toDateString());
           });
-          if (matched) {
-            cell.innerHTML = `${matched.name}<br>${matched.startTime}〜${matched.endTime}`;
-            cell.style.background = "#f39c12";
-            cell.style.color = "#fff";
+          if (match) {
+            cell.classList.add("reserved");
+            cell.innerHTML = `${match.name}<br>${match.startTime}〜${match.endTime}`;
           }
           row.appendChild(cell);
         });
+
         calendarBody.appendChild(row);
       });
 
       monthLabel.textContent = `${currentYear}年${currentMonth + 1}月`;
     }
 
-    // 月移動
     function changeMonth(offset) {
       currentMonth += offset;
       if (currentMonth > 11) {
@@ -145,76 +154,58 @@
       renderCalendar();
     }
 
-    // 車両セレクト更新
     function updateVehicleSelect() {
       vehicleSelect.innerHTML = "";
-      vehicles.forEach(vehicle => {
-        const opt = document.createElement("option");
-        opt.value = vehicle.plate;
-        opt.textContent = `${vehicle.name} / ${vehicle.plate}`;
-        vehicleSelect.appendChild(opt);
+      vehicles.forEach(v => {
+        const option = document.createElement("option");
+        option.value = v.plate;
+        option.textContent = `${v.name} / ${v.plate}`;
+        vehicleSelect.appendChild(option);
       });
     }
 
-    // Firestoreから予約取得
-    async function loadReservations() {
-      const snapshot = await db.collection("reservations").get();
-      reservations.length = 0;
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        data._id = doc.id;
-        reservations.push(data);
-      });
-      renderCalendar();
-    }
-
-    // 初期表示
-    window.addEventListener("DOMContentLoaded", async () => {
-      // 仮：初期車両を設定
-      vehicles.push(
-        { name: "ミニバン・ラフェスタ", plate: "沖縄528わ6514" },
-        { name: "ミニバン・ビアンテ", plate: "沖縄328わ766" },
-        { name: "ミニバン・セレナ", plate: "沖縄527わ6833" }
-      );
-      updateVehicleSelect();
-      await loadReservations();
+    document.getElementById("vehicle-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("vehicle-name").value;
+      const plate = document.getElementById("vehicle-plate").value;
+      await db.collection("vehicles").add({ name, plate });
+      document.getElementById("vehicle-form").reset();
     });
 
-    // 予約追加フォーム処理
     document.getElementById("reservation-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const index = document.getElementById("edit-index").value;
-      const newReservation = {
+      const data = {
         plate: vehicleSelect.value,
         name: document.getElementById("reserver-name").value,
         start: document.getElementById("start-date").value,
         end: document.getElementById("end-date").value,
         startTime: document.getElementById("start-time").value,
-        endTime: document.getElementById("end-time").value
+        endTime: document.getElementById("end-time").value,
       };
-
-      if (index === "") {
-        const doc = await db.collection("reservations").add(newReservation);
-        newReservation._id = doc.id;
-      } else {
-        newReservation._id = reservations[index]._id;
-        await db.collection("reservations").doc(newReservation._id).set(newReservation);
-      }
-
+      await db.collection("reservations").add(data);
       document.getElementById("reservation-form").reset();
-      document.getElementById("edit-index").value = "";
-      await loadReservations();
     });
 
-    // 車両追加フォーム処理
-    document.getElementById("vehicle-form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      const name = document.getElementById("vehicle-name").value;
-      const plate = document.getElementById("vehicle-plate").value;
-      vehicles.push({ name, plate });
+    // Firestoreリアルタイム反映
+    db.collection("vehicles").onSnapshot(snapshot => {
+      vehicles.length = 0;
+      snapshot.forEach(doc => {
+        vehicles.push(doc.data());
+      });
       updateVehicleSelect();
       renderCalendar();
-      document.getElementById("vehicle-form").reset();
+    });
+
+    db.collection("reservations").onSnapshot(snapshot => {
+      reservations.length = 0;
+      snapshot.forEach(doc => {
+        reservations.push(doc.data());
+      });
+      renderCalendar();
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      renderCalendar();
     });
   </script>
 </body>
