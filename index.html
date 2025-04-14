@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>車両予約カレンダー</title>
   <style>
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; } /* フォントサイズを小さく */
     th, td { border: 1px solid #aaa; padding: 4px; text-align: center; }
     th { background: #eee; }
     td.reserved { background: #f39c12; color: white; }
+    td { padding: 8px 5px; } /* 余白を調整 */
   </style>
 </head>
 <body>
@@ -98,16 +99,20 @@
 
         dates.forEach(day => {
           const cell = document.createElement("td");
-          const match = reservations.find(r => {
+          const dayReservations = reservations.filter(r => {
             if (r.plate !== vehicle.plate) return false;
             const start = new Date(`${r.start}T${r.startTime}`);
             const end = new Date(`${r.end}T${r.endTime}`);
             return day >= new Date(start.toDateString()) && day <= new Date(end.toDateString());
           });
-          if (match) {
+
+          if (dayReservations.length > 0) {
             cell.className = "reserved";
-            cell.innerHTML = `${match.name}<br>${match.startTime}〜${match.endTime}`;
+            // 予約内容を1つにまとめる
+            const reservationText = dayReservations.map(r => `${r.name}: ${r.startTime}〜${r.endTime}`).join('<br>');
+            cell.innerHTML = reservationText;
           }
+
           row.appendChild(cell);
         });
 
