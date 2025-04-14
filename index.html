@@ -398,6 +398,11 @@
   renderCalendar();
 }
 
+window.addEventListener("DOMContentLoaded", () => {
+  updateVehicleSelect();   // 車両選択肢を更新
+  loadReservations();      // 予約データをFirestoreから読み込む
+});
+
 // ページロード時に呼ぶ
 loadReservations(); // ← ページ読み込み時にFirestoreから予約取得
       
