@@ -168,7 +168,7 @@
     }
 
     // 📊 カレンダーを描画
-    function renderCalendar() {
+   function renderCalendar() {
   const dates = getDateArray(currentYear, currentMonth);
   calendarHeader.innerHTML = "<th>車両名 / ナンバー</th>";
   dates.forEach(d => {
@@ -180,39 +180,60 @@
   calendarBody.innerHTML = "";
   vehicles.forEach(vehicle => {
     const row = document.createElement("tr");
-    const td = document.createElement("td");
-    td.textContent = `${vehicle.name} / ${vehicle.plate}`;
-    row.appendChild(td);
+    const nameCell = document.createElement("td");
+    nameCell.textContent = `${vehicle.name} / ${vehicle.plate}`;
+    row.appendChild(nameCell);
 
-    dates.forEach(day => {
-      const cell = document.createElement("td");
-      const cellDateStr = day.toISOString().split("T")[0];
-      const matchedReservations = reservations
-        .filter(r => {
-          if (r.plate !== vehicle.plate) return false;
-          const start = new Date(`${r.start}T${r.startTime}`);
-          const end = new Date(`${r.end}T${r.endTime}`);
-          const target = new Date(day.toDateString());
-          return target >= new Date(start.toDateString()) && target <= new Date(end.toDateString());
-        })
-        .sort((a, b) => a.startTime.localeCompare(b.startTime)); // 時間順にソート
+    let dayIndex = 0;
+    while (dayIndex < dates.length) {
+  const currentDate = dates[dayIndex];
+  const dayStr = currentDate.toISOString().split("T")[0];
 
-      if (matchedReservations.length > 0) {
-        cell.className = "reserved";
-        matchedReservations.forEach((r, i) => {
-          const box = document.createElement("div");
-          box.className = "reservation-box";
-          box.innerHTML = `
-            ${r.name}<br>${r.startTime}〜${r.endTime}
-            <button onclick="editReservation('${r.id}')">編集</button>
-            <button onclick="deleteReservation('${r.id}')">削除</button>
-          `;
-          cell.appendChild(box);
-        });
-      }
+  // 対象の予約を探す
+  const ongoingReservations = reservations.filter(r => {
+    if (r.plate !== vehicle.plate) return false;
+    const start = new Date(`${r.start}T${r.startTime}`);
+    const end = new Date(`${r.end}T${r.endTime}`);
+    const target = new Date(currentDate.toDateString());
+    return target >= new Date(start.toDateString()) && target <= new Date(end.toDateString());
+  });
 
-      row.appendChild(cell);
-    });
+  if (ongoingReservations.length === 0) {
+    const emptyCell = document.createElement("td");
+    row.appendChild(emptyCell);
+    dayIndex++;
+    continue;
+  }
+
+  const cell = document.createElement("td");
+  cell.className = "reserved";
+
+  // 同じ予約が次の日も続いているかチェック
+  const res = ongoingReservations[0];
+  const startDate = new Date(res.start);
+  const endDate = new Date(res.end);
+  const spanDays = (endDate - startDate) / (1000 * 60 * 60 * 24) + 1;
+
+  let colspan = 1;
+  while (
+    dayIndex + colspan < dates.length &&
+    new Date(dates[dayIndex + colspan]) <= endDate
+  ) {
+    colspan++;
+  }
+
+  cell.colSpan = colspan;
+  cell.innerHTML = `
+    <div class="reservation-box">
+      ${res.name}<br>${res.startTime}〜${res.endTime}
+      <button onclick="editReservation('${res.id}')">編集</button>
+      <button onclick="deleteReservation('${res.id}')">削除</button>
+    </div>
+  `;
+
+  row.appendChild(cell);
+  dayIndex += colspan;
+}
 
     calendarBody.appendChild(row);
   });
